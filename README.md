@@ -6,6 +6,22 @@ Designed for personal Facebook Pages, it chats naturally with friends in **Roman
 
 ---
 
+## 📸 Screenshots
+
+### 1. n8n AI Workflow Canvas
+![n8n Workflow Canvas](screenshots/workflow-canvas.png)
+
+### 2. Live Executions (All Green & Successful)
+![Live Executions](screenshots/executions-success.png)
+
+### 3. Real Chat Context & AI Response
+In this test, a friend asks in Romanized Nepali: *"malai kathmandu jana xa boli . ticket paunxu maile ?"*  
+The AI understands the language context and replies naturally: *"Hajur! Kathmandu jana ko lagi ticket pauna thik chha ni, check garnu parcha online. Kunai help chahincha bhaney bhanidinuhola!"*
+
+![AI Chat Response](screenshots/ai-chat-response.png)
+
+---
+
 ## 🚀 Features
 
 - **Context Memory:** Remembers past conversation context using LangChain `Window Buffer Memory` keyed to each friend's Messenger ID.
