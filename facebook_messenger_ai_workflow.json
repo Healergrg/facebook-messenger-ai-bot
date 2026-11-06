@@ -1,0 +1,221 @@
+{
+  "name": "Facebook Messenger AI Friend with Emergency Alert (Fixed)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "messenger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "11111111-0000-0000-0000-000000000001",
+      "name": "Meta Verify Webhook (GET)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 180],
+      "webhookId": "messenger-verify-get"
+    },
+    {
+      "parameters": {
+        "jsCode": "const query = $json.query || {};\nconst VERIFY_TOKEN = \"my_secret_token_123\";\n\nif (query['hub.mode'] === 'subscribe' && query['hub.verify_token'] === VERIFY_TOKEN) {\n  return [{ json: { challenge: query['hub.challenge'] } }];\n}\n\nreturn [{ json: { challenge: 'Invalid verify token' } }];"
+      },
+      "id": "11111111-0000-0000-0000-000000000002",
+      "name": "Check Verify Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 180]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.challenge }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "11111111-0000-0000-0000-000000000003",
+      "name": "Respond Challenge",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [680, 180]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "messenger",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "22222222-0000-0000-0000-000000000001",
+      "name": "Incoming Messenger Webhook (POST)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 420],
+      "webhookId": "messenger-incoming-post"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "EVENT_RECEIVED",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "22222222-0000-0000-0000-000000000002",
+      "name": "Acknowledge Meta Immediately",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 420]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body;\n\nif (!body || body.object !== 'page') {\n  return [];\n}\n\nconst results = [];\n\nfor (const entry of body.entry || []) {\n  for (const messaging of entry.messaging || []) {\n    if (messaging.message && !messaging.message.is_echo && messaging.message.text) {\n      results.push({\n        json: {\n          sender_id: messaging.sender.id,\n          message_text: messaging.message.text\n        }\n      });\n    }\n  }\n}\n\nreturn results;"
+      },
+      "id": "22222222-0000-0000-0000-000000000003",
+      "name": "Extract Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message_text }}",
+        "hasOutputParser": false,
+        "options": {
+          "systemMessage": "You are replying casually on behalf of a friend to his close friends on Facebook Messenger.\n\nLanguage Rules:\n- If the friend writes in Romanized Nepali/Hindi (e.g. 'kasto chas bro', 'k cha', 'kata chas', 'sab thik cha?'), reply in natural casual Romanized Nepali slang.\n- If they write in Devanagari script (e.g. 'कस्तो छ', 'के गर्दै छौ', 'सन्चै छौ?'), reply in Devanagari.\n- If they write in English, reply in casual English.\n- Match their vibe, keep replies brief and human (like a real text message, no robot formality).\n\nEmergency Check:\n- If the friend mentions an emergency, accident, hospital, critical family crisis, urgent money needed, or pleads to call right now, set \"is_urgent\": true. Otherwise false.\n\nOutput strictly in JSON:\n{\n  \"reply\": \"your message text here\",\n  \"is_urgent\": true or false\n}"
+        }
+      },
+      "id": "33333333-0000-0000-0000-000000000001",
+      "name": "AI Friend Proxy",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [920, 420]
+    },
+    {
+      "parameters": {
+        "model": "openai/gpt-4o-mini",
+        "options": {}
+      },
+      "id": "33333333-0000-0000-0000-000000000002",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [860, 640]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Extract Message').item.json.sender_id }}",
+        "contextWindowLength": 10
+      },
+      "id": "33333333-0000-0000-0000-000000000003",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [1040, 640]
+    },
+    {
+      "parameters": {
+        "jsCode": "let raw = $json.output || \"\";\nraw = raw.replace(/```json/g, '').replace(/```/g, '').trim();\n\ntry {\n  const parsed = JSON.parse(raw);\n  return [{\n    json: {\n      sender_id: $('Extract Message').item.json.sender_id,\n      original_text: $('Extract Message').item.json.message_text,\n      reply: parsed.reply || \"Thik cha bro, sunum na!\",\n      is_urgent: Boolean(parsed.is_urgent)\n    }\n  }];\n} catch (e) {\n  return [{\n    json: {\n      sender_id: $('Extract Message').item.json.sender_id,\n      original_text: $('Extract Message').item.json.message_text,\n      reply: raw,\n      is_urgent: false\n    }\n  }];\n}"
+      },
+      "id": "44444444-0000-0000-0000-000000000001",
+      "name": "Parse AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1220, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.is_urgent }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "44444444-0000-0000-0000-000000000002",
+      "name": "Is Emergency?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1440, 420]
+    },
+    {
+      "parameters": {
+        "disabled": true,
+        "from": "YOUR_TWILIO_PHONE_NUMBER",
+        "to": "YOUR_PERSONAL_PHONE_NUMBER",
+        "message": "=🚨 URGENT MESSENGER ALERT:\n\"{{ $json.original_text }}\""
+      },
+      "id": "55555555-0000-0000-0000-000000000001",
+      "name": "Send Emergency SMS",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1700, 320]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://graph.facebook.com/v19.0/me/messages",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "access_token",
+              "value": "YOUR_PAGE_ACCESS_TOKEN"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ recipient: { id: $json.sender_id }, message: { text: $json.reply } }) }}",
+        "options": {}
+      },
+      "id": "55555555-0000-0000-0000-000000000002",
+      "name": "Send Reply to Messenger",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1700, 500]
+    }
+  ],
+  "connections": {
+    "Meta Verify Webhook (GET)": {
+      "main": [[{"node": "Check Verify Token", "type": "main", "index": 0}]]
+    },
+    "Check Verify Token": {
+      "main": [[{"node": "Respond Challenge", "type": "main", "index": 0}]]
+    },
+    "Incoming Messenger Webhook (POST)": {
+      "main": [[{"node": "Acknowledge Meta Immediately", "type": "main", "index": 0}]]
+    },
+    "Acknowledge Meta Immediately": {
+      "main": [[{"node": "Extract Message", "type": "main", "index": 0}]]
+    },
+    "Extract Message": {
+      "main": [[{"node": "AI Friend Proxy", "type": "main", "index": 0}]]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [[{"node": "AI Friend Proxy", "type": "ai_languageModel", "index": 0}]]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [[{"node": "AI Friend Proxy", "type": "ai_memory", "index": 0}]]
+    },
+    "AI Friend Proxy": {
+      "main": [[{"node": "Parse AI Output", "type": "main", "index": 0}]]
+    },
+    "Parse AI Output": {
+      "main": [[{"node": "Is Emergency?", "type": "main", "index": 0}]]
+    },
+    "Is Emergency?": {
+      "main": [
+        [{"node": "Send Emergency SMS", "type": "main", "index": 0}],
+        [{"node": "Send Reply to Messenger", "type": "main", "index": 0}]
+      ]
+    },
+    "Send Emergency SMS": {
+      "main": [[{"node": "Send Reply to Messenger", "type": "main", "index": 0}]]
+    }
+  }
+}
